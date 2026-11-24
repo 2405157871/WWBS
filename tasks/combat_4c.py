@@ -18,6 +18,7 @@ TEMPLATES_DIR = APP_DIR / "templates"
 
 class Combat4CTask:
     def _run_4c_combat(self, step: Step) -> None:
+        self._check_combat_type("combat_4c")
         required = (
             "press_keys",
             "press_key",

@@ -8,13 +8,13 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 from tasks.combat_4c_entrance import BossChallengeEntrance
-from combat_rotation import active_modules, default_store
+from combat_rotation import COMBAT_MODES, COMBAT_TYPES, active_modules, default_store
 from image_matcher import TemplateMatcher
 from tasks.weekly_rewards import WeeklyLimitReached
 from tasks.combat_4c import Combat4CTask
 from tasks.dreamland import (DEFAULT_GROUP_NAME, WEEKLY_CLICK_INTERVAL,
                         WEEKLY_TEMPLATE_THRESHOLD, DreamlandTask)
-from tasks.models import Step, WeeklyTask
+from tasks.models import Step, TaskNeedsReview, WeeklyTask
 from tasks.other import OtherTask
 from tasks.match3_task import Match3Task
 
@@ -77,6 +77,7 @@ class TaskRunner(Combat4CTask, DreamlandTask, OtherTask, Match3Task):
         rotation_presets: dict[str, list[dict]] | None = None,
         rotation_times: dict[str, dict] | None = None,
         rotation_orders: dict[str, list[int]] | None = None,
+        combat_types: dict[str, str] | None = None,
         boss_challenge: BossChallengeEntrance | None = None,
         warning=None,
         daily_orb_confidence=.45,
@@ -99,6 +100,7 @@ class TaskRunner(Combat4CTask, DreamlandTask, OtherTask, Match3Task):
         self.rotation_presets = rotation_presets or {}
         self.rotation_times = rotation_times or {}
         self.rotation_orders = rotation_orders or {}
+        self.combat_types = combat_types or {}
         self._rotation_slot = 1
         self._rotation_end_check = None
         self._rotation_battle_finished = False
@@ -114,6 +116,22 @@ class TaskRunner(Combat4CTask, DreamlandTask, OtherTask, Match3Task):
         self._weekly_observed_target = None
         self._weekly_pending_click = None
         self._weekly_click_at = 0.
+
+    def combat_type(self, mode: str) -> str:
+        """How one mode fights: axis (ordered presets) or vision (screen reading)."""
+        selected = self.combat_types.get(mode, 'axis')
+        return selected if selected in COMBAT_TYPES else 'axis'
+
+    def _check_combat_type(self, mode: str) -> None:
+        """Stop before any input when the selected combat type cannot run yet."""
+        if self.combat_type(mode) != 'vision':
+            return
+        message = f"{COMBAT_MODES[mode]}已选择图像识别战斗，但该功能尚未实现，任务未完成。"
+        self.log(f"    {message}")
+        if not self.dry_run:
+            self.notice(message)
+        # A quiet return would be reported as a finished task and could shut down.
+        raise TaskNeedsReview(message)
 
     def run_task(self, task: WeeklyTask) -> None:
         if task.template_group == 'default' and task.name == DEFAULT_GROUP_NAME:

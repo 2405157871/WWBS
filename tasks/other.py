@@ -103,6 +103,7 @@ class OtherTask:
                     "middle_click", "release_keys")
         if any(not hasattr(self.controller, name) for name in required):
             raise RuntimeError("深塔挑战目前只支持 PC 客户端窗口。")
+        self._check_combat_type("tower")
         if self.dry_run:
             self.log("    干运行：靠近光球，识别开始挑战后按 F，按深塔预设持续战斗至挑战成功。")
             return
@@ -177,6 +178,8 @@ class OtherTask:
                 raise RuntimeError(f"深塔战斗输入失败：{idle.error}") from idle.error
 
     def _run_daily_routine(self, step: Step) -> None:
+        # Checked here: the restored 1.5.4 routine itself must stay byte-for-byte.
+        self._check_combat_type("daily")
         from tasks.daily_verified import VerifiedDailyNavigation
         return VerifiedDailyNavigation(self)._run_daily_routine(step)
 

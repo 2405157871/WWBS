@@ -36,7 +36,8 @@ from update_manager import (create_update_work, download_asset, refresh_release_
 from local_settings import (apply_import, bootstrap_own_settings, default_search_roots,
                             discover_latest, discovery_needed, prepare_import, save_discovery_state,
                             snapshot_settings, describe_import, save_import_receipt, verify_import_receipt, changed_settings, excluded_settings_source)
-from combat_rotation import ACTION_SPECS, COMBAT_MODES, SLOT_NAMES, active_modules, default_store, load_store, new_module, save_store, validate_store
+from combat_rotation import (ACTION_SPECS, COMBAT_MODES, COMBAT_TYPES, SLOT_NAMES, active_modules,
+                             default_store, load_store, new_module, save_store, validate_store)
 from combat_seed import decode_seed, export_seed, import_seed
 from seed_library import download_seed, search_seeds, upload_seed
 from rain_effect import RAIN_MODES, RAIN_LEVELS, RAIN_STRENGTHS, load_rain_settings, normalize_rain_settings
@@ -3973,6 +3974,7 @@ class App:
         for child in self.rotation_modes_parent.winfo_children():
             child.destroy()
         self.rotation_mode_choices = {}
+        self.rotation_combat_type_choices = {}
         for column, (mode, title) in enumerate(COMBAT_MODES.items()):
             box = Frame(self.rotation_modes_parent, bg=COLORS["panel_alt"])
             box.grid(row=0, column=column, sticky="ew", padx=(0, 8) if column == 0 else (8, 0))
@@ -3987,6 +3989,39 @@ class App:
             self.rotation_mode_choices[mode] = variable
             self._rounded_picker(box, variable, self._rotation_preset_names(),
                                  lambda selected_mode=mode: self._rotation_assign_mode(selected_mode)).pack(fill=X)
+            type_heading = Label(box, text=title + "的战斗方式", bg=COLORS["panel_alt"],
+                                 fg=COLORS["text"], wraplength=240, justify=LEFT, anchor="w")
+            type_heading.pack(fill=X, pady=(10, 0))
+            type_heading.bind("<Configure>", lambda e, w=type_heading: w.configure(wraplength=max(80, e.width-4)))
+            type_variable = StringVar(value=COMBAT_TYPES[self._rotation_combat_type(mode)])
+            self.rotation_combat_type_choices[mode] = type_variable
+            self._rounded_picker(box, type_variable, list(COMBAT_TYPES.values()),
+                                 lambda selected_mode=mode: self._rotation_assign_combat_type(selected_mode)).pack(fill=X)
+            if type_variable.get() == COMBAT_TYPES["vision"]:
+                hint = Label(box, text="图像识别战斗尚未实现，执行到战斗时会停止。", bg=COLORS["panel_alt"],
+                             fg=COLORS["muted"], wraplength=240, justify=LEFT, anchor="w")
+                hint.pack(fill=X, pady=(4, 0))
+                hint.bind("<Configure>", lambda e, w=hint: w.configure(wraplength=max(80, e.width-4)))
+
+    def _rotation_combat_type(self, mode: str) -> str:
+        selected = self.rotation_store.get("combat_types", {}).get(mode, "axis")
+        return selected if selected in COMBAT_TYPES else "axis"
+
+    def _rotation_assign_combat_type(self, mode: str) -> None:
+        if not self._rotation_save():
+            self._rotation_refresh_modes()
+            return
+        selected = next(key for key, label in COMBAT_TYPES.items()
+                        if label == self.rotation_combat_type_choices[mode].get())
+        previous = self._rotation_combat_type(mode)
+        self.rotation_store.setdefault("combat_types", {})[mode] = selected
+        if not self._rotation_save_new_structure():
+            self.rotation_store.setdefault("combat_types", {})[mode] = previous
+            self._rotation_refresh_modes()
+            return
+        self.rotation_status.set(f"{COMBAT_MODES[mode]}的战斗方式：{COMBAT_TYPES[selected]}。"
+                                 + ("图像识别战斗尚未实现，执行到战斗时会停止。" if selected == "vision" else ""))
+        self._rotation_refresh_modes()
 
     def _rotation_assign_mode(self, mode: str) -> None:
         if not self._rotation_save():
@@ -6900,6 +6935,7 @@ class App:
             return
         if hasattr(self, "rotation_store"):
             self._rotation_run_store = validate_store(self.rotation_store)
+            rotation_types = self._rotation_run_store['combat_types']
             kinds = {"tower_challenge": "tower", "daily_routine": "daily", "combat_4c": "combat_4c"}
             modes = {kinds[step.action] for task in tasks for step in task.steps if step.action in kinds}
             for mode in modes:
@@ -6908,6 +6944,10 @@ class App:
                 order = [n for n in selected['slot_order'] if any(m['slot'] == n for m in selected['modules'])]
                 route = ' → '.join(f"{SLOT_NAMES[n]} {selected['slot_times'][str(n)]:g}秒" for n in order)
                 self._log(f"本次{COMBAT_MODES[mode]}战斗轴：{selected['name']}，运行顺序：{route}（启动时快照）。")
+                combat_type = rotation_types.get(mode, 'axis')
+                if combat_type != 'axis':
+                    self._log(f"本次{COMBAT_MODES[mode]}战斗方式：{COMBAT_TYPES[combat_type]}；"
+                              "图像识别战斗尚未实现，执行到战斗时会停止。")
         self._last_started_tasks = copy.deepcopy(tasks)
         self._last_job_options = {'max_cycles': self.max_cycles,
             'dry_run': self.dry_run.get(),
@@ -6969,6 +7009,7 @@ class App:
                 rotation_orders={mode: next(p["slot_order"] for p in rotation_snapshot["presets"]
                                             if p["id"] == rotation_snapshot["modes"][mode])
                                  for mode in COMBAT_MODES},
+                combat_types=dict(rotation_snapshot.get('combat_types', {})),
             )
             self._active_runner = runner
             for task in tasks:

@@ -30,6 +30,8 @@ DEFAULT_VALUES = {
     "approach": (0.09, 0.75), "wait": (1, 0),
 }
 COMBAT_MODES = {"combat_4c": "4C 刷取", "daily": "一键日常", "tower": "深塔挑战"}
+# How a mode fights: the ordered axis, or screen-reading combat (not built yet).
+COMBAT_TYPES = {"axis": "轴战斗", "vision": "图像识别"}
 SLOT_NAMES = {1: "一号位", 2: "二号位", 3: "三号位"}
 MAX_PRESET_NAME = 64
 PERIODIC_ACTIONS = frozenset({"skill", "ultimate", "echo"})
@@ -92,6 +94,7 @@ def default_store() -> dict:
         module['value'] = value
         first.append(module)
     preset['modules'] = first + [m for m in preset['modules'] if m['slot'] == 3]
+    store['combat_types'] = {mode: 'axis' for mode in COMBAT_MODES}
     return store
 
 
@@ -184,7 +187,17 @@ def validate_store(raw) -> dict:
         if selected not in seen_presets:
             raise ValueError(f"{COMBAT_MODES[mode]}的战斗预设不存在")
         modes[mode] = selected
-    return {"version": 5, "active": active, "modes": modes, "presets": presets}
+    type_source = raw.get("combat_types", {})
+    if not isinstance(type_source, dict):
+        raise ValueError("战斗方式配置格式错误")
+    combat_types = {}
+    for mode in COMBAT_MODES:
+        selected_type = type_source.get(mode, "axis")
+        if selected_type not in COMBAT_TYPES:
+            raise ValueError(f"{COMBAT_MODES[mode]}的战斗方式无效")
+        combat_types[mode] = selected_type
+    return {"version": 5, "active": active, "modes": modes, "combat_types": combat_types,
+            "presets": presets}
 
 
 def load_store(path: Path) -> dict:
