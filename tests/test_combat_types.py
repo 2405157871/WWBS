@@ -170,6 +170,19 @@ class CombatTypeUiTests(unittest.TestCase):
         finally:
             root.destroy()
 
+    def test_vision_character_list_scrolls_with_mousewheel(self):
+        root = tk.Tk()
+        try:
+            window = self.build_ui(root)
+            window._rotation_show_combat_tab('vision')
+            root.update()
+            before = window.vision_char_list.yview()[0]
+            window.vision_char_list.event_generate('<MouseWheel>', delta=-120)
+            root.update()
+            self.assertGreater(window.vision_char_list.yview()[0], before)
+        finally:
+            root.destroy()
+
     def test_each_mode_can_choose_a_combat_type_and_it_is_saved(self):
         root = tk.Tk()
         try:

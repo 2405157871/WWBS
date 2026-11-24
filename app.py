@@ -2275,7 +2275,24 @@ class App:
         return content, canvas
 
     @staticmethod
+    def _bind_listbox_mousewheel(widget) -> None:
+        def scroll(event) -> str:
+            steps = -3 if event.delta > 0 else 3
+            widget.yview_scroll(steps, "units")
+            return "break"
+
+        def scroll_units(steps: int):
+            return lambda _event: (widget.yview_scroll(steps, "units"), "break")[1]
+
+        widget.bind("<MouseWheel>", scroll, add="+")
+        widget.bind("<Button-4>", scroll_units(-3), add="+")
+        widget.bind("<Button-5>", scroll_units(3), add="+")
+
+    @staticmethod
     def _bind_mousewheel_tree(widget, canvas: Canvas) -> None:
+        if getattr(widget, "_owns_mousewheel", False):
+            return
+
         def scroll(event) -> str:
             delta = -1 if event.delta > 0 else 1
             canvas.yview_scroll(delta * 3, "units")
@@ -4079,6 +4096,8 @@ class App:
         list_row.pack(fill=BOTH, expand=True)
         self.vision_char_list = Listbox(list_row, height=18, font=(FONT_FAMILY, 10),
                                         relief='flat', bd=0, highlightthickness=0, exportselection=False)
+        self.vision_char_list._owns_mousewheel = True
+        self._bind_listbox_mousewheel(self.vision_char_list)
         list_scrollbar = self._thin_scrollbar(list_row, command=self.vision_char_list.yview)
         self.vision_char_list.configure(yscrollcommand=list_scrollbar.set)
         self.vision_char_list.pack(side=LEFT, fill=BOTH, expand=True)
@@ -4089,6 +4108,8 @@ class App:
         self.vision_char_detail = Text(detail_body, height=16, font=(FONT_FAMILY, 10),
                                        relief='flat', bd=0, highlightthickness=0, wrap='none',
                                        bg=COLORS["panel_alt"], fg=COLORS["text"])
+        self.vision_char_detail._owns_mousewheel = True
+        self._bind_listbox_mousewheel(self.vision_char_detail)
         detail_scrollbar = self._thin_scrollbar(detail_body, command=self.vision_char_detail.yview)
         self.vision_char_detail.configure(yscrollcommand=detail_scrollbar.set)
         self.vision_char_detail.pack(side=LEFT, fill=BOTH, expand=True)
