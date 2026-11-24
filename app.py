@@ -4089,22 +4089,20 @@ class App:
     def _load_vision_characters(self) -> None:
         try:
             from wwbs_combat.char.CharFactory import char_dict
+            from wwbs_combat.char_names import character_display_name
         except Exception as exc:
             self._vision_char_classes = []
             self.vision_char_list.delete(0, END)
             self.vision_char_list.insert(END, f"图像识别角色库加载失败：{exc}")
             return
-        entries = []
-        for key, info in char_dict.items():
-            labels = key if isinstance(key, tuple) else (key,)
+        entries, seen = [], set()
+        for info in char_dict.values():
             cls = info.get("cls")
-            if cls is None or not hasattr(cls, "do_perform"):
+            if cls is None or not hasattr(cls, "do_perform") or cls in seen:
                 continue
-            name = str(labels[0].value)
-            if name.startswith("char_"):
-                name = name[len("char_"):]
-            entries.append((name.replace('_', ' ').title(), cls))
-        entries.sort()
+            seen.add(cls)
+            entries.append((character_display_name(cls), cls))
+        entries.sort(key=lambda item: item[0])
         self._vision_char_classes = entries
         self.vision_char_list.delete(0, END)
         for name, _cls in entries:

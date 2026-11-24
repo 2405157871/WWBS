@@ -3,6 +3,7 @@ import json
 import tempfile
 import threading
 import tkinter as tk
+from tkinter import END
 import unittest
 from pathlib import Path
 from unittest.mock import Mock, patch
@@ -153,6 +154,19 @@ class CombatTypeUiTests(unittest.TestCase):
             if 'text' in child.keys():
                 yield child.cget('text')
             yield from CombatTypeUiTests.texts(child)
+
+    def test_vision_character_list_uses_chinese_names(self):
+        root = tk.Tk()
+        try:
+            window = self.build_ui(root)
+            names = set(window.vision_char_list.get(0, END))
+            self.assertIn('今汐', names)
+            self.assertIn('秋水', names)
+            self.assertIn('相里要', names)
+            self.assertNotIn('Jinhsi', names)
+            self.assertNotIn('Aalto', names)
+        finally:
+            root.destroy()
 
     def test_each_mode_can_choose_a_combat_type_and_it_is_saved(self):
         root = tk.Tk()
