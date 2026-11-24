@@ -14,7 +14,7 @@ from tasks.weekly_rewards import WeeklyLimitReached
 from tasks.combat_4c import Combat4CTask
 from tasks.dreamland import (DEFAULT_GROUP_NAME, WEEKLY_CLICK_INTERVAL,
                         WEEKLY_TEMPLATE_THRESHOLD, DreamlandTask)
-from tasks.models import Step, TaskNeedsReview, WeeklyTask
+from tasks.models import Step, WeeklyTask
 from tasks.other import OtherTask
 from tasks.match3_task import Match3Task
 
@@ -122,16 +122,13 @@ class TaskRunner(Combat4CTask, DreamlandTask, OtherTask, Match3Task):
         selected = self.combat_types.get(mode, 'axis')
         return selected if selected in COMBAT_TYPES else 'axis'
 
-    def _check_combat_type(self, mode: str) -> None:
-        """Stop before any input when the selected combat type cannot run yet."""
+    def _check_combat_type(self, mode: str) -> bool:
+        """Return True when this battle should use image-recognition combat."""
         if self.combat_type(mode) != 'vision':
-            return
-        message = f"{COMBAT_MODES[mode]}已选择图像识别战斗，但该功能尚未实现，任务未完成。"
-        self.log(f"    {message}")
-        if not self.dry_run:
-            self.notice(message)
-        # A quiet return would be reported as a finished task and could shut down.
-        raise TaskNeedsReview(message)
+            return False
+        if not hasattr(self.controller, 'capture_frame'):
+            raise RuntimeError("图像识别战斗只支持 PC 客户端窗口。")
+        return True
 
     def run_task(self, task: WeeklyTask) -> None:
         if task.template_group == 'default' and task.name == DEFAULT_GROUP_NAME:

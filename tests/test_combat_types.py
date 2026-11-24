@@ -12,7 +12,7 @@ import local_settings as settings
 from app import DAILY_ZONE_NAMES
 from combat_rotation import COMBAT_MODES, default_store, load_store, save_store, validate_store
 from combat_seed import decode_seed, import_seed
-from tasks.models import Step, TaskNeedsReview, WeeklyTask
+from tasks.models import Step, WeeklyTask
 
 
 SEED = '【默认战斗轴】WWBS4.AYv-g9l9L0bsvLcDxGNgYJADqmARcmDQYGRhZcShDADWKANg'
@@ -68,36 +68,44 @@ class CombatTypeRunnerTests(unittest.TestCase):
     def test_axis_never_raises_or_notifies(self):
         notice = Mock()
         for mode in COMBAT_MODES:
-            self.assertIsNone(self.runner(notice=notice)._check_combat_type(mode))
+            self.assertFalse(self.runner(notice=notice)._check_combat_type(mode))
         notice.assert_not_called()
 
-    def test_vision_stops_before_any_input_and_is_not_reported_as_done(self):
+    def test_vision_routes_to_the_image_recognition_battle(self):
         for mode, start in (('combat_4c', '_run_4c_combat'), ('tower', '_run_tower_challenge'),
-                            ('daily', '_run_daily_routine')):
+                            ('daily', '_run_daily_battle')):
             with self.subTest(mode=mode):
                 runner = self.runner({mode: 'vision'}, notice=Mock())
-                runner._run_4c_battle, runner._approach_tower_start, runner._open_daily_tacet_field = (
-                    Mock(), Mock(), Mock())
+                runner.max_cycles = 2
+                runner._run_vision_battle = Mock()
+                runner._run_4c_battle = Mock()
+                runner._approach_tower_start = Mock(return_value=True)
+                runner._capture_for_matching = Mock()
+                runner._tower_success_present = Mock(side_effect=[False, True])
+                runner._collect_4c_reward = Mock()
+                runner._restart_4c_challenge = Mock()
                 runner.daily_zone_name = DAILY_ZONE_NAMES[0]
                 step = Mock(timeout=1200) if mode != 'daily' else Step(action='daily_routine')
-                with self.assertRaisesRegex(TaskNeedsReview, '图像识别战斗'):
+                if mode == 'daily':
+                    getattr(runner, start)(step, 'E', 'R', 1)
+                else:
                     getattr(runner, start)(step)
-                runner.notice.assert_called_once()
+                expected_calls = 2 if mode == 'combat_4c' else 1
+                self.assertEqual(runner._run_vision_battle.call_count, expected_calls)
+                self.assertEqual(runner._run_vision_battle.call_args.args[0], mode)
+                runner.notice.assert_not_called()
                 runner._run_4c_battle.assert_not_called()
-                runner._approach_tower_start.assert_not_called()
-                runner._open_daily_tacet_field.assert_not_called()
                 for name in ('press_key', 'press_binding', 'left_click', 'middle_click', 'press_keys'):
                     getattr(runner.controller, name).assert_not_called()
 
     def test_dry_run_reports_vision_without_a_dialog(self):
         runner = self.runner({'combat_4c': 'vision'}, dry_run=True, notice=Mock())
-        with self.assertRaises(TaskNeedsReview):
-            runner._run_4c_combat(Mock(timeout=1200))
+        runner._run_4c_combat(Mock(timeout=1200))
         runner.notice.assert_not_called()
-        runner.log.assert_any_call('    4C 刷取已选择图像识别战斗，但该功能尚未实现，任务未完成。')
+        runner.log.assert_any_call('    干运行：4C将使用图像识别战斗（角色识别 + 技能CD + 状态连招）。')
 
     def test_axis_mode_still_reaches_the_battle_loop(self):
-        runner = self.runner({'tower': 'vision'}, dry_run=False)
+        runner = self.runner({}, dry_run=False)
         runner.max_cycles = 1
         runner._run_4c_battle, runner._collect_4c_reward, runner._restart_4c_challenge = Mock(), Mock(), Mock()
         runner._run_4c_combat(Mock(timeout=1200))
@@ -152,19 +160,16 @@ class CombatTypeUiTests(unittest.TestCase):
             with tempfile.TemporaryDirectory() as directory, patch.object(
                     app, 'COMBAT_PRESETS_CONFIG', Path(directory)/'combat.json'):
                 window = self.build_ui(root)
-                self.assertEqual(set(window.rotation_combat_type_choices), set(COMBAT_MODES))
-                self.assertNotIn('图像识别战斗尚未实现', ''.join(self.texts(window.rotation_modes_parent)))
-                window.rotation_combat_type_choices['tower'].set('图像识别')
-                window._rotation_assign_combat_type('tower')
+                self.assertEqual(window._rotation_active_combat_type(), 'axis')
+                window._rotation_set_active_combat_type('vision')
                 saved = load_store(app.COMBAT_PRESETS_CONFIG)
-                self.assertEqual(saved['combat_types'], {'daily': 'axis', 'combat_4c': 'axis', 'tower': 'vision'})
+                self.assertEqual(saved['combat_types'], {mode: 'vision' for mode in COMBAT_MODES})
                 self.assertEqual(saved['modes'], validate_store(default_store())['modes'])
-                self.assertIn('深塔挑战的战斗方式：图像识别', window.rotation_status.get())
-                self.assertIn('图像识别战斗尚未实现', ''.join(self.texts(window.rotation_modes_parent)))
-                window.rotation_combat_type_choices['tower'].set('轴战斗')
-                window._rotation_assign_combat_type('tower')
+                self.assertIn('图像识别', window.rotation_status.get())
+                self.assertEqual(len(window._rotation_combat_tab_bar.winfo_children()), 2)
+                window._rotation_set_active_combat_type('axis')
                 self.assertEqual(load_store(app.COMBAT_PRESETS_CONFIG)['combat_types'], AXIS)
-                self.assertNotIn('图像识别战斗尚未实现', ''.join(self.texts(window.rotation_modes_parent)))
+                self.assertNotIn('图像识别', window.rotation_status.get())
         finally:
             root.destroy()
 
@@ -174,10 +179,8 @@ class CombatTypeUiTests(unittest.TestCase):
             window = self.build_ui(root)
             window._rotation_save = Mock(return_value=True)
             window._rotation_save_new_structure = Mock(return_value=False)
-            window.rotation_combat_type_choices['daily'].set('图像识别')
-            window._rotation_assign_combat_type('daily')
+            window._rotation_set_active_combat_type('vision')
             self.assertEqual(window.rotation_store['combat_types'], AXIS)
-            self.assertEqual(window.rotation_combat_type_choices['daily'].get(), '轴战斗')
         finally:
             root.destroy()
 

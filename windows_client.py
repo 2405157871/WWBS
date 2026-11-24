@@ -319,9 +319,21 @@ class ClientWindowController:
             "空格键": "SPACE",
             "ESC键": "ESC",
             "ESCAPE": "ESC",
+            "LSHIFT": "LSHIFT",
+            "RSHIFT": "RSHIFT",
+            "SHIFT": "SHIFT",
+            "LCTRL": "LCTRL",
+            "RCTRL": "RCTRL",
+            "LALT": "LALT",
+            "RALT": "RALT",
+            "TAB": "TAB",
+            "ENTER": "ENTER",
+            "RETURN": "ENTER",
         }
         normalized = aliases.get(normalized, normalized)
-        if normalized in {"XBUTTON1", "XBUTTON2", "SPACE", "ESC", "F2"}:
+        if normalized in {"XBUTTON1", "XBUTTON2", "SPACE", "ESC", "F2", "TAB",
+                          "ENTER", "SHIFT", "LSHIFT", "RSHIFT", "LCTRL", "RCTRL",
+                          "LALT", "RALT"}:
             return normalized
         if len(normalized) == 1 and normalized.isascii() and normalized.isalnum():
             return normalized
@@ -330,14 +342,16 @@ class ClientWindowController:
     @classmethod
     def _virtual_key(cls, key: str) -> int:
         normalized = cls.normalize_input_binding(key)
-        if normalized == "SPACE":
-            return 0x20
-        if normalized == "ESC":
-            return 0x1B
+        special_keys = {
+            "SPACE": 0x20, "ESC": 0x1B, "TAB": 0x09, "ENTER": 0x0D,
+            "SHIFT": 0x10, "LSHIFT": 0xA0, "RSHIFT": 0xA1,
+            "LCTRL": 0xA2, "RCTRL": 0xA3, "LALT": 0xA4, "RALT": 0xA5,
+            "F2": 0x71,
+        }
+        if normalized in special_keys:
+            return special_keys[normalized]
         if normalized in {"XBUTTON1", "XBUTTON2"}:
             raise ValueError("鼠标侧键不能作为键盘事件发送。")
-        if normalized == "F2":
-            return 0x71
         if len(normalized) != 1 or not normalized.isascii() or not normalized.isalnum():
             raise ValueError(f"不支持的键盘按键: {key}")
         return ord(normalized)
@@ -365,7 +379,7 @@ class ClientWindowController:
             if held is not None:
                 held.discard(virtual_key) if key_up else held.add(virtual_key)
 
-    def screencap(self, target: Path, bring_to_front: bool = False, tolerate_blank: bool = False) -> str:
+    def _capture_image(self, tolerate_blank: bool = False) -> Image.Image:
         self._ensure_window()
         if user32.IsIconic(self.hwnd):
             user32.ShowWindow(self.hwnd, SW_RESTORE)
@@ -394,8 +408,19 @@ class ClientWindowController:
             image = image.resize(expected_size, Image.Resampling.BILINEAR)
         self.last_capture_size = image.size
         self.last_capture_method = method
+        return image
+
+    def screencap(self, target: Path, bring_to_front: bool = False, tolerate_blank: bool = False) -> str:
+        image = self._capture_image(tolerate_blank=tolerate_blank)
         image.save(target)
-        return method
+        return self.last_capture_method
+
+    def capture_frame(self, tolerate_blank: bool = False):
+        """Capture the game client into an in-memory BGR numpy frame (cv2 convention)."""
+        import numpy as np
+
+        image = self._capture_image(tolerate_blank=tolerate_blank)
+        return np.asarray(image.convert("RGB"))[:, :, ::-1].copy()
 
     def _requires_foreground_capture(self) -> bool:
         # Unreal/DirectX windows can make PrintWindow report success while it

@@ -18,7 +18,8 @@ TEMPLATES_DIR = APP_DIR / "templates"
 
 class Combat4CTask:
     def _run_4c_combat(self, step: Step) -> None:
-        self._check_combat_type("combat_4c")
+        if self._check_combat_type("combat_4c"):
+            return self._run_4c_vision_combat(step)
         required = (
             "press_keys",
             "press_key",
@@ -56,6 +57,37 @@ class Combat4CTask:
                     return
                 self.log(f"    === 第 {cycle_index}/{cycle_count} 轮 ===")
                 self._run_4c_battle(step, skill_key, ultimate_key, cycle_index)
+                if self.stop_event.is_set():
+                    return
+                self._collect_4c_reward(cycle_index)
+                if self.stop_event.is_set():
+                    return
+                if cycle_index >= cycle_count:
+                    self.log(f"    已完成 {cycle_count} 轮战斗与吸收，停止4C刷取。")
+                    return
+                self._restart_4c_challenge(cycle_index + 1)
+                if self.boss_challenge is not None:
+                    self.boss_challenge.wait_for_battle(self)
+        finally:
+            try:
+                self.controller.release_keys(("W", "A", "S", "D", "SPACE", "1", "2", "3", "4"))
+            except Exception as exc:
+                self.log(f"    释放战斗按键时遇到问题: {exc}")
+
+    def _run_4c_vision_combat(self, step: Step) -> None:
+        if self.dry_run:
+            self.log("    干运行：4C将使用图像识别战斗（角色识别 + 技能CD + 状态连招）。")
+            return
+        cycle_count = max(1, int(self.max_cycles or 1))
+        try:
+            if self.boss_challenge is not None and not self.boss_challenge.enter(self):
+                return
+            for cycle_index in range(1, cycle_count + 1):
+                if self.stop_event.is_set():
+                    self.log("    收到停止信号，4C刷取已停止。")
+                    return
+                self.log(f"    === 第 {cycle_index}/{cycle_count} 轮（图像识别战斗） ===")
+                self._run_vision_battle("combat_4c", step)
                 if self.stop_event.is_set():
                     return
                 self._collect_4c_reward(cycle_index)

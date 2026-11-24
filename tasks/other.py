@@ -98,14 +98,66 @@ class OtherTask:
             return False
         raise RuntimeError("靠近深塔光球后未识别到“开始挑战”，请从塔内光球前的画面启动。")
 
+    def _run_vision_battle(self, mode: str, step: Step) -> None:
+        """Run one okww-style closed-loop battle in the current task thread."""
+        label = {"tower": "深塔", "daily": "日常", "combat_4c": "4C"}.get(mode, mode)
+        if self.dry_run:
+            self.log(f"    干运行：{label}将使用图像识别战斗（角色识别 + 技能CD + 状态连招）。")
+            return
+        from wwbs_combat import VisionCombatRunner
+
+        self.log(f"    {label}图像识别战斗开始：识别敌人、角色与技能CD后自动连招。")
+        runner = VisionCombatRunner(
+            self.controller,
+            self.stop_event,
+            options={
+                "hotkeys": {
+                    "Resonance Key": self.controller.normalize_input_binding(self.combat_skill_key).lower(),
+                    "Liberation Key": self.controller.normalize_input_binding(self.combat_ultimate_key).lower(),
+                },
+            },
+        )
+        try:
+            runner.run()
+        finally:
+            runner.close()
+            self.controller.release_keys()
+        self.log(f"    {label}图像识别战斗结束。")
+
     def _run_tower_challenge(self, step: Step) -> None:
         required = ("press_keys", "press_key", "press_binding", "left_click", "hold_left_button",
                     "middle_click", "release_keys")
         if any(not hasattr(self.controller, name) for name in required):
             raise RuntimeError("深塔挑战目前只支持 PC 客户端窗口。")
-        self._check_combat_type("tower")
+        vision = self._check_combat_type("tower")
         if self.dry_run:
             self.log("    干运行：靠近光球，识别开始挑战后按 F，按深塔预设持续战斗至挑战成功。")
+            return
+        if vision:
+            screenshot = APP_DIR / "_runtime_screenshot.png"
+            try:
+                attempt = 0
+                while not self.stop_event.is_set():
+                    self._capture_for_matching(screenshot)
+                    if self._tower_success_present(screenshot):
+                        self.log("    已识别挑战成功，停止操作并保持结算界面。")
+                        return
+                    if attempt >= 3:
+                        self.log("    图像识别战斗多次未识别挑战成功，停止深塔任务。")
+                        return
+                    attempt += 1
+                    self.log(f"    === 第 {attempt}/3 次图像识别挑战 ===")
+                    try:
+                        if not self._approach_tower_start(screenshot):
+                            return
+                    except RuntimeError as exc:
+                        if attempt == 1:
+                            raise
+                        self.log(f"    重新进入挑战失败: {exc}")
+                        return
+                    self._run_vision_battle("tower", step)
+            finally:
+                self.controller.release_keys()
             return
         screenshot = APP_DIR / "_runtime_screenshot.png"
         try:
@@ -923,6 +975,8 @@ class OtherTask:
         ultimate_key: str,
         cycle_index: int,
     ) -> None:
+        if self._check_combat_type("daily"):
+            return self._run_vision_battle("daily", step)
         started = time.monotonic()
         deadline = started + max(180.0, step.timeout)
         modules = self.rotation_presets.get("daily", self.rotation_modules)

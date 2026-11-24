@@ -18,7 +18,7 @@ import zipfile
 from dataclasses import replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from tkinter import BOTH, END, LEFT, RIGHT, TOP, X, BooleanVar, Canvas, Checkbutton, Entry, Frame, Label, Listbox, StringVar, Text, Tk, TclError, filedialog, messagebox, simpledialog, ttk
+from tkinter import BOTH, END, LEFT, RIGHT, TOP, X, Y, BooleanVar, Canvas, Checkbutton, Entry, Frame, Label, Listbox, StringVar, Text, Tk, TclError, filedialog, messagebox, simpledialog, ttk
 from tkinter import font as tkfont
 
 from PIL import Image, ImageTk
@@ -2184,7 +2184,7 @@ class App:
                             probability_shell, settings_shell, self.log_tab)
         self._nav_buttons = []
         nav_font = tkfont.Font(root=self.root, family=FONT_FAMILY, size=11)
-        for index, title in enumerate(("快捷任务", "战斗排轴", "模板", "概率", "设置", "日志")):
+        for index, title in enumerate(("快捷任务", "战斗设置", "模板", "概率", "设置", "日志")):
             button = Canvas(nav, width=max(84, nav_font.measure(title) + 34),
                             height=max(48, nav_font.metrics("linespace") + 19),
                             bg=COLORS["app_bg"], highlightthickness=0,
@@ -3318,7 +3318,7 @@ class App:
             ("R", "E", "Q", "T", "鼠标侧键1", "鼠标侧键2"),
             self._autosave_combat_settings, editable=True)
         ultimate_key_picker.pack(fill=X, pady=(3, 0))
-        Label(quick_settings, text="角色位和战斗动作请在“战斗排轴”页设置。",
+        Label(quick_settings, text="角色位和战斗动作请在“战斗设置”页设置。",
               fg=COLORS["muted"], bg=COLORS["panel_alt"], wraplength=420,
               justify=LEFT).pack(anchor="w", pady=(1, 5))
         Checkbutton(
@@ -3974,7 +3974,6 @@ class App:
         for child in self.rotation_modes_parent.winfo_children():
             child.destroy()
         self.rotation_mode_choices = {}
-        self.rotation_combat_type_choices = {}
         for column, (mode, title) in enumerate(COMBAT_MODES.items()):
             box = Frame(self.rotation_modes_parent, bg=COLORS["panel_alt"])
             box.grid(row=0, column=column, sticky="ew", padx=(0, 8) if column == 0 else (8, 0))
@@ -3989,39 +3988,142 @@ class App:
             self.rotation_mode_choices[mode] = variable
             self._rounded_picker(box, variable, self._rotation_preset_names(),
                                  lambda selected_mode=mode: self._rotation_assign_mode(selected_mode)).pack(fill=X)
-            type_heading = Label(box, text=title + "的战斗方式", bg=COLORS["panel_alt"],
-                                 fg=COLORS["text"], wraplength=240, justify=LEFT, anchor="w")
-            type_heading.pack(fill=X, pady=(10, 0))
-            type_heading.bind("<Configure>", lambda e, w=type_heading: w.configure(wraplength=max(80, e.width-4)))
-            type_variable = StringVar(value=COMBAT_TYPES[self._rotation_combat_type(mode)])
-            self.rotation_combat_type_choices[mode] = type_variable
-            self._rounded_picker(box, type_variable, list(COMBAT_TYPES.values()),
-                                 lambda selected_mode=mode: self._rotation_assign_combat_type(selected_mode)).pack(fill=X)
-            if type_variable.get() == COMBAT_TYPES["vision"]:
-                hint = Label(box, text="图像识别战斗尚未实现，执行到战斗时会停止。", bg=COLORS["panel_alt"],
-                             fg=COLORS["muted"], wraplength=240, justify=LEFT, anchor="w")
-                hint.pack(fill=X, pady=(4, 0))
-                hint.bind("<Configure>", lambda e, w=hint: w.configure(wraplength=max(80, e.width-4)))
 
     def _rotation_combat_type(self, mode: str) -> str:
         selected = self.rotation_store.get("combat_types", {}).get(mode, "axis")
         return selected if selected in COMBAT_TYPES else "axis"
 
-    def _rotation_assign_combat_type(self, mode: str) -> None:
+    def _rotation_active_combat_type(self) -> str:
+        """The mutually exclusive combat type: only when every mode is vision."""
+        return ("vision" if all(self._rotation_combat_type(mode) == "vision" for mode in COMBAT_MODES)
+                else "axis")
+
+    def _rotation_set_active_combat_type(self, active: str) -> None:
+        """Activate one combat type for every mode; activating one turns the other off."""
+        if active not in COMBAT_TYPES:
+            return
         if not self._rotation_save():
-            self._rotation_refresh_modes()
             return
-        selected = next(key for key, label in COMBAT_TYPES.items()
-                        if label == self.rotation_combat_type_choices[mode].get())
-        previous = self._rotation_combat_type(mode)
-        self.rotation_store.setdefault("combat_types", {})[mode] = selected
+        previous = dict(self.rotation_store.get("combat_types", {}))
+        combat_types = self.rotation_store.setdefault("combat_types", {})
+        for mode in COMBAT_MODES:
+            combat_types[mode] = active
         if not self._rotation_save_new_structure():
-            self.rotation_store.setdefault("combat_types", {})[mode] = previous
-            self._rotation_refresh_modes()
+            self.rotation_store["combat_types"] = previous
+            self._rotation_refresh_combat_type_ui()
             return
-        self.rotation_status.set(f"{COMBAT_MODES[mode]}的战斗方式：{COMBAT_TYPES[selected]}。"
-                                 + ("图像识别战斗尚未实现，执行到战斗时会停止。" if selected == "vision" else ""))
-        self._rotation_refresh_modes()
+        self.rotation_status.set(
+            f"已激活{COMBAT_TYPES[active]}。"
+            + ("战斗阶段将识别敌人、角色与技能CD后自动连招，仅 PC 客户端窗口生效。" if active == "vision"
+               else "战斗阶段将按下方各模式预设的时间轴作战。"))
+        self._rotation_refresh_combat_type_ui()
+
+    def _rotation_refresh_combat_type_ui(self) -> None:
+        """Rebuild the tab bar and the two mutually exclusive activation rows."""
+        active = self._rotation_active_combat_type()
+        if hasattr(self, "_rotation_combat_tab_bar"):
+            for child in self._rotation_combat_tab_bar.winfo_children():
+                child.destroy()
+            for key, label in COMBAT_TYPES.items():
+                self._rounded_button(self._rotation_combat_tab_bar, label,
+                                     lambda k=key: self._rotation_show_combat_tab(k),
+                                     width=110,
+                                     primary=(key == getattr(self, "_rotation_shown_tab", "axis")),
+                                     ).pack(side=LEFT, padx=(0, 8))
+        for key, row in getattr(self, "_rotation_combat_type_rows", {}).items():
+            for child in row.winfo_children():
+                child.destroy()
+            is_active = key == active
+            Label(row, text="当前已激活" if is_active else "未激活",
+                  bg=row.cget("bg"), fg=COLORS["muted"]).pack(side=LEFT, padx=(0, 8))
+            if is_active:
+                self._rounded_button(row, "已激活", lambda: None, width=90, primary=True).pack(side=LEFT)
+            else:
+                self._rounded_button(row, "激活", lambda k=key: self._rotation_set_active_combat_type(k),
+                                     width=90).pack(side=LEFT)
+
+    def _rotation_show_combat_tab(self, key: str) -> None:
+        self._rotation_shown_tab = key
+        if key == "vision":
+            self.rotation_axis_body.pack_forget()
+            self.rotation_vision_body.pack(fill=BOTH, expand=True)
+        else:
+            self.rotation_vision_body.pack_forget()
+            self.rotation_axis_body.pack(fill=BOTH, expand=True)
+        self._rotation_refresh_combat_type_ui()
+
+    def _build_vision_combat_body(self) -> None:
+        body = self.rotation_vision_body
+        activate_row = Frame(body, bg=COLORS["panel"])
+        activate_row.pack(fill=X, pady=(0, 6))
+        self._rotation_combat_type_rows["vision"] = activate_row
+        status = Label(body, textvariable=self.rotation_status, bg=COLORS["panel"], fg=COLORS["muted"],
+                       justify=LEFT, wraplength=700, anchor="w")
+        status.pack(anchor="w", fill=X, pady=(0, 6))
+        status.bind("<Configure>", lambda e: status.configure(wraplength=max(180, e.width-4)))
+        list_shell, list_body = self._rounded_panel(body, padding=8)
+        list_shell.pack(fill=X)
+        Label(list_body, text="角色连招列表（点击角色查看其轴程序，只读）",
+              bg=COLORS["panel_alt"], fg=COLORS["text"]).pack(anchor="w", pady=(0, 4))
+        list_row = Frame(list_body, bg=COLORS["panel_alt"])
+        list_row.pack(fill=X)
+        self.vision_char_list = Listbox(list_row, height=8, font=(FONT_FAMILY, 10),
+                                        relief='flat', bd=0, highlightthickness=0, exportselection=False)
+        list_scrollbar = self._thin_scrollbar(list_row, command=self.vision_char_list.yview)
+        self.vision_char_list.configure(yscrollcommand=list_scrollbar.set)
+        self.vision_char_list.pack(side=LEFT, fill=X, expand=True)
+        list_scrollbar.pack(side=RIGHT, fill=Y)
+        self.vision_char_list.bind("<<ListboxSelect>>", self._on_vision_char_selected)
+        detail_shell, detail_body = self._rounded_panel(body, padding=8)
+        detail_shell.pack(fill=BOTH, expand=True, pady=(8, 0))
+        self.vision_char_detail = Text(detail_body, height=16, font=(FONT_FAMILY, 10),
+                                       relief='flat', bd=0, highlightthickness=0, wrap='none',
+                                       bg=COLORS["panel_alt"], fg=COLORS["text"])
+        detail_scrollbar = self._thin_scrollbar(detail_body, command=self.vision_char_detail.yview)
+        self.vision_char_detail.configure(yscrollcommand=detail_scrollbar.set)
+        self.vision_char_detail.pack(side=LEFT, fill=BOTH, expand=True)
+        detail_scrollbar.pack(side=RIGHT, fill=Y)
+        self.vision_char_detail.configure(state='disabled')
+        self._load_vision_characters()
+
+    def _load_vision_characters(self) -> None:
+        try:
+            from wwbs_combat.char.CharFactory import char_dict
+        except Exception as exc:
+            self._vision_char_classes = []
+            self.vision_char_list.delete(0, END)
+            self.vision_char_list.insert(END, f"图像识别角色库加载失败：{exc}")
+            return
+        entries = []
+        for key, info in char_dict.items():
+            labels = key if isinstance(key, tuple) else (key,)
+            cls = info.get("cls")
+            if cls is None or not hasattr(cls, "do_perform"):
+                continue
+            name = str(labels[0].value)
+            if name.startswith("char_"):
+                name = name[len("char_"):]
+            entries.append((name.replace('_', ' ').title(), cls))
+        entries.sort()
+        self._vision_char_classes = entries
+        self.vision_char_list.delete(0, END)
+        for name, _cls in entries:
+            self.vision_char_list.insert(END, name)
+
+    def _on_vision_char_selected(self, _event=None) -> None:
+        selection = self.vision_char_list.curselection()
+        if not selection:
+            return
+        cls = self._vision_char_classes[selection[0]][1]
+        import inspect
+        try:
+            source = inspect.getsource(cls.do_perform)
+        except (OSError, TypeError):
+            source = "# 无法读取该角色的连招源码。"
+        self.vision_char_detail.configure(state='normal')
+        self.vision_char_detail.delete('1.0', END)
+        self.vision_char_detail.insert('1.0', source)
+        self.vision_char_detail.configure(state='disabled')
 
     def _rotation_assign_mode(self, mode: str) -> None:
         if not self._rotation_save():
@@ -4461,16 +4563,25 @@ class App:
         return header
 
     def _build_rotation_tab(self) -> None:
-        Label(self.rotation_tab, text="战斗排轴", font=(FONT_FAMILY, 15, "bold"),
+        Label(self.rotation_tab, text="战斗设置", font=(FONT_FAMILY, 15, "bold"),
               bg=COLORS["panel"], fg=COLORS["text"]).pack(anchor="w")
-        help_text = Label(self.rotation_tab, text="角色卡从左到右循环，空列跳过；开战先切到首个角色。离场继续计时，技能、大招与声骸到间隔按模块顺序触发。",
+        help_text = Label(self.rotation_tab, text="“战斗轴”按预设时间轴作战；“图像识别”实时识别敌人、角色与技能CD后自动连招。两种方式互斥，激活其一后另一种自动关闭。",
                           bg=COLORS["panel"], fg=COLORS["muted"], wraplength=700, justify=LEFT, anchor="w")
-        help_text.pack(anchor="w", fill=X, pady=(4, 10))
+        help_text.pack(anchor="w", fill=X, pady=(4, 6))
         help_text.bind("<Configure>", lambda e: help_text.configure(wraplength=max(180, e.width-4)))
+        self._rotation_combat_tab_bar = Frame(self.rotation_tab, bg=COLORS["panel"])
+        self._rotation_combat_tab_bar.pack(fill=X, pady=(0, 6))
+        self._rotation_combat_type_rows = {}
+        self.rotation_axis_body = Frame(self.rotation_tab, bg=COLORS["panel"])
+        self.rotation_vision_body = Frame(self.rotation_tab, bg=COLORS["panel"])
         self._rotation_editing_id = self.rotation_store["active"]
         self.rotation_choice.set(self._rotation_current_preset()["name"])
         self.rotation_status = StringVar(value="拖动角色标题前的三点调整整列顺序；模块三点排序，×快速删除，›修改参数。滚轮浏览，驻场时间自动保存。")
-        toolbar = Frame(self.rotation_tab, bg=COLORS["panel"])
+        self._build_vision_combat_body()
+        axis_activate_row = Frame(self.rotation_axis_body, bg=COLORS["panel"])
+        axis_activate_row.pack(fill=X, pady=(0, 6))
+        self._rotation_combat_type_rows["axis"] = axis_activate_row
+        toolbar = Frame(self.rotation_axis_body, bg=COLORS["panel"])
         toolbar.pack(fill=X, pady=(0, 8))
         self.rotation_picker_parent = Frame(toolbar, bg=COLORS["panel"])
         self.rotation_picker_parent.pack(side=LEFT, fill=X, expand=True)
@@ -4484,16 +4595,16 @@ class App:
         self._ui_button(toolbar, text="导入种子", command=self._rotation_import_seed).pack(side=LEFT)
         self._ui_button(toolbar, text="在线种子库", width=14, command=self._rotation_online_seed_library).pack(side=LEFT)
         self._reserve_row_controls(toolbar, self.rotation_picker_parent)
-        modes_shell, modes_body = self._rounded_panel(self.rotation_tab, padding=10)
+        modes_shell, modes_body = self._rounded_panel(self.rotation_axis_body, padding=10)
         modes_shell.pack(fill=X, pady=(0, 8))
         self.rotation_modes_parent = Frame(modes_body, bg=COLORS["panel_alt"])
         self.rotation_modes_parent.pack(fill=X)
         self._rotation_refresh_modes()
-        status = Label(self.rotation_tab, textvariable=self.rotation_status, bg=COLORS["panel"], fg=COLORS["muted"],
+        status = Label(self.rotation_axis_body, textvariable=self.rotation_status, bg=COLORS["panel"], fg=COLORS["muted"],
                        justify=LEFT, wraplength=700, anchor="w")
         status.pack(anchor="w", fill=X, pady=(0, 8))
         status.bind("<Configure>", lambda e: status.configure(wraplength=max(180, e.width-4)))
-        columns = Frame(self.rotation_tab, bg=COLORS["panel"])
+        columns = Frame(self.rotation_axis_body, bg=COLORS["panel"])
         self._rotation_columns_parent = columns
         columns.pack(fill=BOTH, expand=True)
         columns.rowconfigure(0, weight=1)
@@ -4549,6 +4660,7 @@ class App:
                                             "list": content, "canvas": canvas, "scrollbar": canvas._scrollbar}
             self._bind_mousewheel_tree(list_shell, canvas)
         columns.rowconfigure(0, weight=1)
+        self._rotation_show_combat_tab(self._rotation_active_combat_type())
         self._rotation_rebuild_cards()
         if hasattr(self, 'rotation_scroll_canvas'):
             self._bind_mousewheel_tree(self.rotation_tab, self.rotation_scroll_canvas)
@@ -6947,7 +7059,7 @@ class App:
                 combat_type = rotation_types.get(mode, 'axis')
                 if combat_type != 'axis':
                     self._log(f"本次{COMBAT_MODES[mode]}战斗方式：{COMBAT_TYPES[combat_type]}；"
-                              "图像识别战斗尚未实现，执行到战斗时会停止。")
+                              "战斗阶段将使用图像识别自动连招（仅 PC 客户端窗口）。")
         self._last_started_tasks = copy.deepcopy(tasks)
         self._last_job_options = {'max_cycles': self.max_cycles,
             'dry_run': self.dry_run.get(),

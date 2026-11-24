@@ -88,7 +88,7 @@ class TaskRunner:
 ```
 
 ## 验证
-- 新增测试覆盖：旧配置无字段时默认轴战斗；未知值报错；保存与读取往返；界面选择保存及保存失败回滚；`TaskRunner` 未传参时默认轴战斗；三种模式选图像识别时入口提示并停止、控制器未收到任何按键；选轴战斗时三处入口行为不变；导入历史种子后 `combat_types` 不变；本地设置继承旧目录配置。
+- 新增测试覆盖：`旧配置无字段时默认轴战斗`；未知值报错；保存与读取往返；界面选择保存及保存失败回滚；`TaskRunner` 未传参时默认轴战斗；三种模式选图像识别时入口提示并停止、控制器未收到任何按键；选轴战斗时三处入口行为不变；导入历史种子后 `combat_types` 不变；本地设置继承旧目录配置。
 - 回归 `tests/test_combat_rotation.py`、`test_combat_seed.py`、`test_tower_challenge.py`、`test_local_settings.py`、`test_default_axis.py`、`test_role_cards.py`、`test_seed_compatibility.py`、`test_settings_startup.py`、`test_daily_routine.py`，然后跑完整 `tests` 目录。
 - 解释器用 `e:\PythonProject\WWBS\.venv\Scripts\python.exe`（`python` 不在 PATH），改完运行 `ruff`。
 

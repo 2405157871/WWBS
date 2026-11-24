@@ -12,6 +12,7 @@ a = Analysis(
         ('wwbs.ico', '.'),
         ('assets/run-notice', 'assets/run-notice'),
         ('assets/rain', 'assets/rain'),
+        ('assets/okww_templates', 'assets/okww_templates'),
         ('pet-assets/pink-lace-chibi/frames', 'pet-assets/pink-lace-chibi/frames'),
         ('pet-assets/aemeath-chibi/frames-sharp', 'pet-assets/aemeath-chibi/frames-sharp'),
         ('pet-assets/jingran-chibi/frames', 'pet-assets/jingran-chibi/frames'),
