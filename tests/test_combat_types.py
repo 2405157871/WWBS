@@ -165,6 +165,8 @@ class CombatTypeUiTests(unittest.TestCase):
             self.assertIn('相里要', names)
             self.assertNotIn('Jinhsi', names)
             self.assertNotIn('Aalto', names)
+            self.assertEqual(window.vision_char_list.curselection(), (0,))
+            self.assertIn('def do_perform', window.vision_char_detail.get('1.0', END))
         finally:
             root.destroy()
 

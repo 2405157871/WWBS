@@ -4061,21 +4061,31 @@ class App:
                        justify=LEFT, wraplength=700, anchor="w")
         status.pack(anchor="w", fill=X, pady=(0, 6))
         status.bind("<Configure>", lambda e: status.configure(wraplength=max(180, e.width-4)))
-        list_shell, list_body = self._rounded_panel(body, padding=8)
-        list_shell.pack(fill=X)
-        Label(list_body, text="角色连招列表（点击角色查看其轴程序，只读）",
-              bg=COLORS["panel_alt"], fg=COLORS["text"]).pack(anchor="w", pady=(0, 4))
+        content = Frame(body, bg=COLORS["panel"])
+        content.pack(fill=BOTH, expand=True)
+        left = Frame(content, bg=COLORS["panel"], width=190)
+        left.pack(side=LEFT, fill=Y)
+        left.pack_propagate(False)
+        right = Frame(content, bg=COLORS["panel"])
+        right.pack(side=LEFT, fill=BOTH, expand=True, padx=(8, 0))
+        list_shell, list_body = self._rounded_panel(left, padding=8)
+        list_shell.pack(fill=BOTH, expand=True)
+        heading = Label(list_body, text="角色连招列表（点击角色查看其轴程序，只读）",
+                        bg=COLORS["panel_alt"], fg=COLORS["text"], wraplength=160,
+                        justify=LEFT, anchor="w")
+        heading.pack(anchor="w", fill=X, pady=(0, 4))
+        heading.bind("<Configure>", lambda e: heading.configure(wraplength=max(120, e.width-4)))
         list_row = Frame(list_body, bg=COLORS["panel_alt"])
-        list_row.pack(fill=X)
-        self.vision_char_list = Listbox(list_row, height=8, font=(FONT_FAMILY, 10),
+        list_row.pack(fill=BOTH, expand=True)
+        self.vision_char_list = Listbox(list_row, height=18, font=(FONT_FAMILY, 10),
                                         relief='flat', bd=0, highlightthickness=0, exportselection=False)
         list_scrollbar = self._thin_scrollbar(list_row, command=self.vision_char_list.yview)
         self.vision_char_list.configure(yscrollcommand=list_scrollbar.set)
-        self.vision_char_list.pack(side=LEFT, fill=X, expand=True)
+        self.vision_char_list.pack(side=LEFT, fill=BOTH, expand=True)
         list_scrollbar.pack(side=RIGHT, fill=Y)
         self.vision_char_list.bind("<<ListboxSelect>>", self._on_vision_char_selected)
-        detail_shell, detail_body = self._rounded_panel(body, padding=8)
-        detail_shell.pack(fill=BOTH, expand=True, pady=(8, 0))
+        detail_shell, detail_body = self._rounded_panel(right, padding=8)
+        detail_shell.pack(fill=BOTH, expand=True)
         self.vision_char_detail = Text(detail_body, height=16, font=(FONT_FAMILY, 10),
                                        relief='flat', bd=0, highlightthickness=0, wrap='none',
                                        bg=COLORS["panel_alt"], fg=COLORS["text"])
@@ -4085,6 +4095,9 @@ class App:
         detail_scrollbar.pack(side=RIGHT, fill=Y)
         self.vision_char_detail.configure(state='disabled')
         self._load_vision_characters()
+        if self._vision_char_classes:
+            self.vision_char_list.selection_set(0)
+            self._on_vision_char_selected()
 
     def _load_vision_characters(self) -> None:
         try:
