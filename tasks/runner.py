@@ -214,6 +214,8 @@ class TaskRunner(Combat4CTask, DreamlandTask, OtherTask, Match3Task):
             self._run_image_cycle(step)
         elif step.action == "move_to_visual_target":
             self._run_visual_navigation(step)
+        elif step.action == "auto_combat":
+            self._run_auto_combat(step)
         elif step.action == "combat_4c":
             self._run_4c_combat(step)
         elif step.action == "tower_challenge":

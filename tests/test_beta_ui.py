@@ -206,13 +206,18 @@ class BetaUiTests(unittest.TestCase):
                      patch.object(weekly_card, "winfo_width", return_value=360), \
                      patch.object(weekly_card, "winfo_height", return_value=70):
                     instance._activate_start_action_card(
+                        weekly_card, Mock(x=319, y=35),
+                        lambda: instance._start_enabled_real(15), "weekly", False, launch=True,
+                    )
+                    run_weekly.assert_called_once_with(15)
+                    instance._activate_start_action_card(
                         weekly_card, Mock(x=100, y=25),
                         lambda: instance._start_enabled_real(15), "weekly", False,
                     )
                     run_weekly.assert_called_once_with(15)
                     with patch.object(instance, "_show_run_notice") as notice:
                         instance._activate_start_action_card(
-                            weekly_card, Mock(x=300, y=25),
+                            weekly_card, Mock(x=270, y=25),
                             lambda: instance._start_enabled_real(15), "weekly", False,
                         )
                         notice.assert_called_once_with("weekly")

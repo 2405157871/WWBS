@@ -124,6 +124,17 @@ class OtherTask:
             self.controller.release_keys()
         self.log(f"    {label}图像识别战斗结束。")
 
+    def _run_auto_combat(self, step: Step) -> None:
+        """Start fighting immediately using the global combat type, no scene checks."""
+        if self._check_combat_type("combat_4c"):
+            self._run_vision_battle("auto", step)
+            return
+        self.log("    直接按当前预设开始轴战斗，不检查场景。")
+        try:
+            self._run_4c_battle(step, self.combat_skill_key, self.combat_ultimate_key, 1)
+        finally:
+            self.controller.release_keys()
+
     def _run_tower_challenge(self, step: Step) -> None:
         required = ("press_keys", "press_key", "press_binding", "left_click", "hold_left_button",
                     "middle_click", "release_keys")

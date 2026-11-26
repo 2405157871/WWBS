@@ -2145,29 +2145,38 @@ class App:
         self.header = Frame(self.root, padx=24, pady=12, bg=COLORS["app_bg"])
         self.header.pack(side=TOP, fill=X)
         Label(self.header, text="wwbs", font=(FONT_FAMILY, 22, "bold"), fg=COLORS["text"], bg=COLORS["app_bg"]).pack(side=LEFT)
-        self._rounded_button(self.header, "检查更新", self._check_for_updates, width=92).pack(side=RIGHT, padx=(0, 8))
-        self._rounded_button(self.header, "关于", self._show_about, width=66).pack(side=RIGHT, padx=(0, 8))
-        self._rounded_button(self.header, "更新公告", self._show_update_history, width=92).pack(side=RIGHT, padx=(0, 14))
+        self._combat_type_var = StringVar(value=COMBAT_TYPES[self._rotation_active_combat_type()])
+        self._combat_type_picker = self._rounded_picker(
+            self.header, self._combat_type_var, list(COMBAT_TYPES.values()),
+            self._on_header_combat_type_change)
+        self._combat_type_picker.configure(width=124)
+        self._combat_type_picker.pack(side=LEFT, padx=(16, 0))
+        self._ui_button(self.header, text="启动战斗", command=self._start_auto_combat,
+                        style="Primary.TButton", width=10).pack(side=RIGHT, padx=(8, 0))
         Label(self.header, textvariable=self.status, font=(FONT_FAMILY, 10), fg=COLORS["muted"], bg=COLORS["app_bg"]).pack(side=RIGHT)
 
-        nav = Frame(self.root, padx=24, bg=COLORS["app_bg"])
-        nav.pack(side=TOP, fill=X, pady=(0, 8))
+        body = Frame(self.root, bg=COLORS["app_bg"])
+        body.pack(fill=BOTH, expand=True, padx=24, pady=(0, 22))
+        nav = Frame(body, bg=COLORS["app_bg"], width=148)
+        nav.pack(side=LEFT, fill=Y)
+        nav.pack_propagate(False)
+        content = Frame(body, bg=COLORS["app_bg"])
+        content.pack(side=LEFT, fill=BOTH, expand=True, padx=(12, 0))
 
         summary_shell, summary = self._rounded_panel(
-            self.root, padding=9, color=COLORS["panel"], outer_color=COLORS["app_bg"])
-        summary_shell.pack(side=TOP, fill=X, padx=24, pady=(0, 10))
+            content, padding=9, color=COLORS["panel"], outer_color=COLORS["app_bg"])
+        summary_shell.pack(side=TOP, fill=X, pady=(0, 10))
         summary.configure(padx=16)
         Label(summary, text="●", fg=COLORS["primary"], bg=COLORS["panel"]).pack(side=LEFT)
         Label(summary, textvariable=self.device_status, fg=COLORS["text"],
               bg=COLORS["panel"]).pack(side=LEFT, padx=(4, 22))
         Label(summary, textvariable=self.template_status, fg=COLORS["muted"],
               bg=COLORS["panel"]).pack(side=LEFT, padx=(0, 22))
-        Label(summary, text="手动点击后执行", fg=COLORS["muted"],
-              bg=COLORS["panel"]).pack(side=LEFT)
+
 
         tabs_shell, self.tabs = self._rounded_panel(
-            self.root, padding=0, color=COLORS["panel"], outer_color=COLORS["app_bg"])
-        tabs_shell.pack(fill=BOTH, expand=True, padx=24, pady=(0, 22))
+            content, padding=0, color=COLORS["panel"], outer_color=COLORS["app_bg"])
+        tabs_shell.pack(fill=BOTH, expand=True)
         self.tabs.columnconfigure(0, weight=1)
         self.tabs.rowconfigure(0, weight=1)
 
@@ -2180,17 +2189,18 @@ class App:
         settings_shell = Frame(self.tabs, bg=COLORS["panel"])
         self.settings_tab, self.settings_scroll_canvas = self._create_scrollable_tab(settings_shell)
         self.log_tab = Frame(self.tabs, padx=20, pady=18, bg=COLORS["panel"])
+        self.about_tab = Frame(self.tabs, padx=20, pady=18, bg=COLORS["panel"])
         self._tab_panels = (self.start_tab, rotation_shell, self.template_tab,
-                            probability_shell, settings_shell, self.log_tab)
+                            probability_shell, settings_shell, self.log_tab, self.about_tab)
         self._nav_buttons = []
         nav_font = tkfont.Font(root=self.root, family=FONT_FAMILY, size=11)
-        for index, title in enumerate(("快捷任务", "战斗设置", "模板", "概率", "设置", "日志")):
-            button = Canvas(nav, width=max(84, nav_font.measure(title) + 34),
+        for index, title in enumerate(("快捷任务", "战斗设置", "模板", "概率", "设置", "日志", "关于")):
+            button = Canvas(nav, width=max(120, nav_font.measure(title) + 34),
                             height=max(48, nav_font.metrics("linespace") + 19),
                             bg=COLORS["app_bg"], highlightthickness=0,
                             cursor="hand2", takefocus=True)
             button._keep_canvas_style = True
-            button.pack(side=LEFT, padx=(0, 4))
+            button.pack(side=TOP, pady=(0, 6))
             button.bind("<Button-1>", lambda _event, position=index: self._select_top_tab(position))
             button.bind("<Return>", lambda _event, position=index: self._select_top_tab(position))
             button.bind("<space>", lambda _event, position=index: self._select_top_tab(position))
@@ -2210,6 +2220,7 @@ class App:
         self._build_probability_tab()
         self._build_settings_tab()
         self._build_log_tab()
+        self._build_about_tab()
         self._polish_widgets(self.root)
 
     def _create_scrollable_tab(self, parent: Frame, *, padding: int = 20,
@@ -2834,14 +2845,14 @@ class App:
             self._repack_start_action_cards()
 
     def _activate_start_action_card(self, card: Canvas, event, command,
-                                    notice_key: str, with_zone: bool) -> None:
+                                    notice_key: str, with_zone: bool, launch: bool = False) -> None:
         width = card.winfo_width()
         if not 0 <= event.x < width or not 0 <= event.y < card.winfo_height():
             return
-        if width - 82 <= event.x <= width - 45 and event.y < 58:
-            self._show_run_notice(notice_key)
-        elif not with_zone or event.y < 65:
+        if launch:
             command()
+        elif width - 100 <= event.x <= width - 78 and event.y < 58:
+            self._show_run_notice(notice_key)
 
     def _make_start_action_card(self, parent: Frame, key: str, title: str, detail: str,
                                 command, notice_key: str, with_zone: bool = False, controls=()):
@@ -2905,15 +2916,19 @@ class App:
                 card.create_oval(19, offset_y, 22, offset_y + 3,
                                  fill=COLORS["muted"], outline="", tags="shape")
             card.create_text(51, 25, text=title, anchor="w", fill=COLORS["text"],
-                             width=max(130, width - 145), font=(FONT_FAMILY, 11, "bold"), tags="shape")
+                             width=max(130, width - 150), font=(FONT_FAMILY, 11, "bold"), tags="shape")
             card.create_text(51, 49, text=detail, anchor="w", fill=COLORS["muted"],
-                             width=max(130, width - 145), font=(FONT_FAMILY, 9), tags="shape")
-            card.create_oval(width - 72, 23, width - 50, 45,
+                             width=max(130, width - 150), font=(FONT_FAMILY, 9), tags="shape")
+            card.create_oval(width - 100, 23, width - 78, 45,
                              outline=COLORS["muted"], width=1, tags="shape")
-            card.create_text(width - 61, 34, text="?", fill=COLORS["muted"],
+            card.create_text(width - 89, 34, text="?", fill=COLORS["muted"],
                              font=(FONT_FAMILY, 9, "bold"), tags="shape")
-            card.create_text(width - 25, 34, text="›", fill=COLORS["text"],
-                             font=(FONT_FAMILY, 19), tags="shape")
+            before_items = set(card.find_all())
+            self._paint_rounded_card(card, width - 70, 20, width - 12, 50, 9, COLORS["primary"])
+            for item in set(card.find_all()) - before_items:
+                card.addtag_withtag("shape", item)
+            card.create_text(width - 41, 35, text="启动", anchor="center", fill="#ffffff",
+                             font=(FONT_FAMILY, 9, "bold"), tags="shape")
             for _label, _variable, _values, _widget, window in control_rows:
                 card.itemconfigure(window, width=max(120, width - 80))
             card.tag_lower("shape")
@@ -2923,6 +2938,8 @@ class App:
         card.bind("<Leave>", lambda _event: draw())
         def press(event) -> None:
             card._drag_from_handle = 8 <= event.x <= 34 and 10 <= event.y <= 56
+            width = card.winfo_width()
+            card._launch_pressed = width - 70 <= event.x <= width - 12 and 18 <= event.y <= 52
             card._drag_started = False
             card._drag_origin = event.y_root
             card._drag_offset = (event.x_root - card.winfo_rootx(),
@@ -3015,7 +3032,9 @@ class App:
             if was_dragged:
                 self._save_start_action_order()
             elif not was_handle:
-                self._activate_start_action_card(card, event, command, notice_key, bool(control_rows))
+                self._activate_start_action_card(card, event, command, notice_key,
+                                                 bool(control_rows),
+                                                 launch=getattr(card, "_launch_pressed", False))
 
         card.bind("<ButtonPress-1>", press)
         card.bind("<B1-Motion>", motion)
@@ -3255,7 +3274,7 @@ class App:
 
         Label(left, text="快捷任务", font=(FONT_FAMILY, 14, "bold"), bg=COLORS["panel"]).pack(anchor="w", pady=(2, 2))
         Label(
-            left, text="点击任务直接运行；按住左侧三点拖动排序。",
+            left, text="点击任务右侧的启动按钮运行；按住左侧三点拖动排序。",
             fg=COLORS["muted"], bg=COLORS["panel"],
         ).pack(anchor="w", pady=(0, 10))
 
@@ -4035,29 +4054,16 @@ class App:
                else "战斗阶段将按下方各模式预设的时间轴作战。"))
         self._rotation_refresh_combat_type_ui()
 
+    def _on_header_combat_type_change(self) -> None:
+        label = self._combat_type_var.get()
+        active = next((key for key, text in COMBAT_TYPES.items() if text == label), "axis")
+        self._rotation_set_active_combat_type(active)
+        if hasattr(self, "rotation_axis_body"):
+            self._rotation_show_combat_tab(self._rotation_active_combat_type())
+
     def _rotation_refresh_combat_type_ui(self) -> None:
-        """Rebuild the tab bar and the two mutually exclusive activation rows."""
-        active = self._rotation_active_combat_type()
-        if hasattr(self, "_rotation_combat_tab_bar"):
-            for child in self._rotation_combat_tab_bar.winfo_children():
-                child.destroy()
-            for key, label in COMBAT_TYPES.items():
-                self._rounded_button(self._rotation_combat_tab_bar, label,
-                                     lambda k=key: self._rotation_show_combat_tab(k),
-                                     width=110,
-                                     primary=(key == getattr(self, "_rotation_shown_tab", "axis")),
-                                     ).pack(side=LEFT, padx=(0, 8))
-        for key, row in getattr(self, "_rotation_combat_type_rows", {}).items():
-            for child in row.winfo_children():
-                child.destroy()
-            is_active = key == active
-            Label(row, text="当前已激活" if is_active else "未激活",
-                  bg=row.cget("bg"), fg=COLORS["muted"]).pack(side=LEFT, padx=(0, 8))
-            if is_active:
-                self._rounded_button(row, "已激活", lambda: None, width=90, primary=True).pack(side=LEFT)
-            else:
-                self._rounded_button(row, "激活", lambda k=key: self._rotation_set_active_combat_type(k),
-                                     width=90).pack(side=LEFT)
+        if hasattr(self, "_combat_type_var"):
+            self._combat_type_var.set(COMBAT_TYPES[self._rotation_active_combat_type()])
 
     def _rotation_show_combat_tab(self, key: str) -> None:
         self._rotation_shown_tab = key
@@ -4071,9 +4077,6 @@ class App:
 
     def _build_vision_combat_body(self) -> None:
         body = self.rotation_vision_body
-        activate_row = Frame(body, bg=COLORS["panel"])
-        activate_row.pack(fill=X, pady=(0, 6))
-        self._rotation_combat_type_rows["vision"] = activate_row
         status = Label(body, textvariable=self.rotation_status, bg=COLORS["panel"], fg=COLORS["muted"],
                        justify=LEFT, wraplength=700, anchor="w")
         status.pack(anchor="w", fill=X, pady=(0, 6))
@@ -4601,18 +4604,12 @@ class App:
                           bg=COLORS["panel"], fg=COLORS["muted"], wraplength=700, justify=LEFT, anchor="w")
         help_text.pack(anchor="w", fill=X, pady=(4, 6))
         help_text.bind("<Configure>", lambda e: help_text.configure(wraplength=max(180, e.width-4)))
-        self._rotation_combat_tab_bar = Frame(self.rotation_tab, bg=COLORS["panel"])
-        self._rotation_combat_tab_bar.pack(fill=X, pady=(0, 6))
-        self._rotation_combat_type_rows = {}
         self.rotation_axis_body = Frame(self.rotation_tab, bg=COLORS["panel"])
         self.rotation_vision_body = Frame(self.rotation_tab, bg=COLORS["panel"])
         self._rotation_editing_id = self.rotation_store["active"]
         self.rotation_choice.set(self._rotation_current_preset()["name"])
         self.rotation_status = StringVar(value="拖动角色标题前的三点调整整列顺序；模块三点排序，×快速删除，›修改参数。滚轮浏览，驻场时间自动保存。")
         self._build_vision_combat_body()
-        axis_activate_row = Frame(self.rotation_axis_body, bg=COLORS["panel"])
-        axis_activate_row.pack(fill=X, pady=(0, 6))
-        self._rotation_combat_type_rows["axis"] = axis_activate_row
         toolbar = Frame(self.rotation_axis_body, bg=COLORS["panel"])
         toolbar.pack(fill=X, pady=(0, 8))
         self.rotation_picker_parent = Frame(toolbar, bg=COLORS["panel"])
@@ -5408,7 +5405,7 @@ class App:
     def _show_task_error_feedback(self, error_text: str) -> None:
         detail = self._friendly_runtime_error(error_text)
         self._pet_feedback("failed", self._event_line("diagnose_error", detail=detail), 5200)
-        self._log(f"自动周本启动条件未满足，已快速报告并进入后台诊断：{detail}")
+        self._log(f"任务启动条件未满足，已快速报告并进入后台诊断：{detail}")
         self._diagnose_runtime(announce=False)
 
     @staticmethod
@@ -5825,6 +5822,25 @@ class App:
             return all(get_key(key) & 0x8000 for key in (VK_CONTROL, VK_ALT, VK_S))
         except Exception:
             return False
+
+    def _build_about_tab(self) -> None:
+        host = self.about_tab
+        Label(host, text="关于 wwbs", font=(FONT_FAMILY, 16, "bold"),
+              bg=COLORS["panel"], fg=COLORS["text"]).pack(anchor="w")
+        Label(host, text=f"版本号：{APP_VERSION}", font=(FONT_FAMILY, 11),
+              bg=COLORS["panel"], fg=COLORS["muted"]).pack(anchor="w", pady=(4, 16))
+        links_shell, links = self._rounded_panel(host, padding=12)
+        links_shell.pack(fill=X, pady=(0, 14))
+        self._ui_button(links, text="打开 B 站视频",
+                        command=lambda: self._open_external_link(ABOUT_BILIBILI_URL)).pack(side=LEFT)
+        self._ui_button(links, text="打开 GitHub",
+                        command=lambda: self._open_external_link(ABOUT_GITHUB_URL)).pack(side=LEFT, padx=(8, 0))
+        actions = Frame(host, bg=COLORS["panel"])
+        actions.pack(fill=X)
+        Label(actions, text="更新与公告", bg=COLORS["panel"], fg=COLORS["muted"]).pack(side=LEFT)
+        self._ui_button(actions, text="更新公告", command=self._show_update_history).pack(side=RIGHT, padx=(8, 0))
+        self._ui_button(actions, text="检查更新", command=self._check_for_updates,
+                        style="Primary.TButton").pack(side=RIGHT)
 
     def _show_about(self) -> None:
         window = Toplevel(self.root)
@@ -7062,6 +7078,14 @@ class App:
             self._show_task(self.tasks[next_index])
         self._log(f"已删除任务：{task.name}")
 
+    def _start_auto_combat(self) -> None:
+        """Launch combat directly, without any scene/entrance recognition."""
+        task = WeeklyTask(name="自动战斗", enabled=True, weekday="any", template_group="default",
+                          description="直接进入战斗，不检查场景。",
+                          steps=[Step(action="auto_combat", label="直接开始自动战斗", timeout=86400)])
+        self.max_cycles = None
+        self._start_worker([task])
+
     def _start_worker(self, tasks: list[WeeklyTask]) -> None:
         settings_dialog = getattr(self, '_settings_import_window', None)
         if settings_dialog is not None and settings_dialog.winfo_exists():
@@ -7112,7 +7136,10 @@ class App:
 
     def _run_tasks(self, tasks: list[WeeklyTask]) -> None:
         job_event = self.stop_event
-        self._log(f"WWBS {APP_VERSION} 开始执行；周常使用1.5.0原版流程。")
+        if len(tasks) == 1 and any(step.action == 'auto_combat' for step in tasks[0].steps):
+            self._log(f"WWBS {APP_VERSION} 开始执行：直接自动战斗（不检查场景）。")
+        else:
+            self._log(f"WWBS {APP_VERSION} 开始执行；周常使用1.5.0原版流程。")
         target = "PC 客户端窗口" if self.target_mode.get() == "client" else "模拟器 / ADB"
         self._log("预演模式：会识别模板，但不会点击。" if self.dry_run.get() else f"真实执行模式：将操作 {target}。")
         try:

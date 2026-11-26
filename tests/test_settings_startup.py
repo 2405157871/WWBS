@@ -15,6 +15,31 @@ from ui_controls import RoundedButton
 
 
 class SettingsStartupTests(unittest.TestCase):
+    def test_about_tab_has_version_links_and_update_actions(self):
+        root = tk.Tk()
+        try:
+            ui = app.App.__new__(app.App)
+            ui.root = root
+            ui.about_tab = tk.Frame(root, bg=app.COLORS['panel'])
+            ui.about_tab.pack(fill=tk.BOTH, expand=True)
+            ui._build_about_tab()
+            root.update()
+            texts = []
+            def walk(widget):
+                for child in widget.winfo_children():
+                    if 'text' in child.keys():
+                        texts.append(child.cget('text'))
+                    elif getattr(child, 'label', None):
+                        texts.append(child.label)
+                    walk(child)
+            walk(ui.about_tab)
+            self.assertTrue(any('版本号' in text for text in texts))
+            self.assertIn('打开 GitHub', texts)
+            self.assertIn('更新公告', texts)
+            self.assertIn('检查更新', texts)
+        finally:
+            root.destroy()
+
     def test_settings_button_mouse_click_opens_import_confirmation(self):
         with tempfile.TemporaryDirectory() as directory, ExitStack() as patches:
             base = Path(directory)
@@ -136,6 +161,32 @@ class SettingsStartupTests(unittest.TestCase):
                 self.assertFalse(ui.rain_music.playing)
                 self.assertEqual(ui.rotation_store['presets'][0]['name'], '我的排轴')
                 self.assertEqual(ui.rotation_store['presets'][0]['slot_order'], [3, 2, 1])
+                self.assertEqual(ui._combat_type_var.get(), '轴战斗')
+                self.assertIs(ui._combat_type_picker.master, ui.header)
+                start_buttons = [child for child in ui.header.winfo_children()
+                                 if getattr(child, 'label', None) == '启动战斗']
+                self.assertEqual(len(start_buttons), 1)
+                with patch.object(ui, '_start_worker') as start_worker:
+                    start_buttons[0].invoke()
+                start_worker.assert_called_once()
+                self.assertEqual(start_worker.call_args.args[0][0].steps[0].action, 'auto_combat')
+                card = ui._start_action_cards['weekly_rewards']
+                root.update()
+                card_width = card.winfo_width()
+                with patch.object(ui, '_start_enabled_real') as run_task:
+                    card.event_generate('<ButtonPress-1>', x=100, y=34)
+                    card.event_generate('<ButtonRelease-1>', x=100, y=34)
+                    root.update()
+                    run_task.assert_not_called()
+                    card.event_generate('<ButtonPress-1>', x=card_width - 41, y=35)
+                    card.event_generate('<ButtonRelease-1>', x=card_width - 41, y=35)
+                    root.update()
+                    run_task.assert_called_once()
+                ui._combat_type_var.set('图像识别')
+                ui._on_header_combat_type_change()
+                self.assertEqual(ui.rotation_store['combat_types']['tower'], 'vision')
+                ui._combat_type_var.set('轴战斗')
+                ui._on_header_combat_type_change()
                 self.assertEqual(ui._settings_import_receipt['failed'], [])
                 exposed = []
                 real_show = root.deiconify
@@ -153,6 +204,8 @@ class SettingsStartupTests(unittest.TestCase):
                 self.assertEqual(root.attributes('-alpha'), 1.0)
                 self.assertEqual(ready, [True])
                 self.assertTrue(all(canvas.find_all() for canvas, _title in ui._nav_buttons))
+                self.assertEqual(len(ui._nav_buttons), 7)
+                self.assertEqual(ui._nav_buttons[-1][1], "关于")
             finally:
                 root.destroy()
 

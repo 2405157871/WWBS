@@ -105,6 +105,23 @@ class CombatTypeRunnerTests(unittest.TestCase):
         runner.notice.assert_not_called()
         runner.log.assert_any_call('    干运行：4C将使用图像识别战斗（角色识别 + 技能CD + 状态连招）。')
 
+    def test_task_error_feedback_is_not_weekly_specific(self):
+        window = app.App.__new__(app.App)
+        window._pet_feedback = Mock()
+        window._event_line = Mock(return_value='error')
+        window._diagnose_runtime = Mock()
+        window._log = Mock()
+        window._show_task_error_feedback('测试错误')
+        self.assertNotIn('自动周本', window._log.call_args.args[0])
+        window._diagnose_runtime.assert_called_once()
+
+    def test_auto_combat_step_runs_directly_without_scene_checks(self):
+        runner = self.runner({'combat_4c': 'vision'}, notice=Mock())
+        runner._run_vision_battle = Mock()
+        runner._run_step(Step(action='auto_combat'))
+        runner._run_vision_battle.assert_called_once()
+        self.assertEqual(runner._run_vision_battle.call_args.args[0], 'auto')
+
     def test_axis_mode_still_reaches_the_battle_loop(self):
         runner = self.runner({}, dry_run=False)
         runner.max_cycles = 1
@@ -195,7 +212,6 @@ class CombatTypeUiTests(unittest.TestCase):
                 self.assertEqual(saved['combat_types'], {mode: 'vision' for mode in COMBAT_MODES})
                 self.assertEqual(saved['modes'], validate_store(default_store())['modes'])
                 self.assertIn('图像识别', window.rotation_status.get())
-                self.assertEqual(len(window._rotation_combat_tab_bar.winfo_children()), 2)
                 window._rotation_set_active_combat_type('axis')
                 self.assertEqual(load_store(app.COMBAT_PRESETS_CONFIG)['combat_types'], AXIS)
                 self.assertNotIn('图像识别', window.rotation_status.get())
